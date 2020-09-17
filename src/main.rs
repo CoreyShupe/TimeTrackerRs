@@ -2,14 +2,21 @@ extern crate clap;
 
 use std::fs::OpenOptions;
 use std::io::{Read, stdin, stdout, Write};
-use std::ops::Add;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{App, AppSettings, Arg, SubCommand};
 
 const SPLIT_WEEK_CHAR: char = '\n';
+const SPLIT_WEEK_CHAR_BYTES: &[u8] = b"\n";
 const SPLIT_DAY_CHAR: char = '?';
+const SPLIT_DAY_CHAR_BYTES: &[u8] = b"?";
+
+const CLEAR_CMD_VERSION: &str = "0.0.1";
+const TRACK_CMD_VERSION: &str = "0.0.1";
+const SPLIT_CMD_VERSION: &str = "0.0.1";
+const SHOW_CMD_VERSION: &str = "0.0.1";
+const EXPORT_CMD_VERSION: &str = "0.0.1";
 
 fn main() {
     let home_dir = dirs::home_dir();
@@ -26,49 +33,18 @@ fn main() {
 
     let app_matcher = App::new("Time Tracker")
         .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand(base_sub_command("clear", "Clears tracker information.", CLEAR_CMD_VERSION).alias("c"))
+        .subcommand(base_sub_command("track", "Begins the time tracker.", TRACK_CMD_VERSION))
         .subcommand(
-            SubCommand::with_name("clear")
-                .about("Clears tracker information.")
-                .author("Corey Shupe")
-                .alias("c")
-                .version("0.0.1")
-        )
-        .subcommand(
-            SubCommand::with_name("track")
-                .about("Begins the time tracker.")
-                .author("Corey Shupe")
-                .version("0.0.1")
-        )
-        .subcommand(
-            SubCommand::with_name("split")
-                .about("Splits the current time counter.")
-                .author("Corey Shupe")
+            base_sub_command("split", "Splits the current time counter.", SPLIT_CMD_VERSION)
                 .setting(AppSettings::SubcommandRequiredElseHelp)
-                .subcommand(
-                    SubCommand::with_name("day")
-                        .about("Splits on the day.")
-                        .author("Corey Shupe")
-                        .version("0.0.1")
-                )
-                .subcommand(
-                    SubCommand::with_name("week")
-                        .about("Splits on the week.")
-                        .author("Corey Shupe")
-                        .version("0.0.1")
-                )
-                .version("0.0.1")
+                .subcommand(base_sub_command("day", "Splits on the day.", SPLIT_CMD_VERSION))
+                .subcommand(base_sub_command("week", "Splits on the week.", SPLIT_CMD_VERSION))
         )
+        .subcommand(base_sub_command("show", "Shows the time tracked.", SHOW_CMD_VERSION).alias("s"))
         .subcommand(
-            SubCommand::with_name("show")
-                .about("Shows the time tracked.")
-                .author("Corey Shupe")
-                .alias("s")
-                .version("0.0.1")
-        )
-        .subcommand(
-            SubCommand::with_name("export")
-                .about("Exports the time logs.")
-                .author("Corey Shupe")
+            base_sub_command("export", "Exports the time logs.", EXPORT_CMD_VERSION)
+                .alias("e")
                 .arg(
                     Arg::with_name("file")
                         .short("f")
@@ -76,58 +52,42 @@ fn main() {
                         .help("Sets the file to export to.")
                         .index(1)
                 )
-                .alias("e")
-                .version("0.0.1")
-        )
-        .get_matches();
+        ).get_matches();
 
-    if let Some(_) = app_matcher.subcommand_matches("clear") {
-        if path.exists() {
-            std::fs::remove_file(path).expect("Failed to remove file.");
+    // executions
+
+    match app_matcher.subcommand_name() {
+        Some("clear") => {
+            if path.exists() {
+                std::fs::remove_file(path).expect("Failed to remove file.");
+            }
+            println!("Your tracking progress has been cleared.")
         }
-        println!("Your tracking progress has been cleared.")
-    } else if let Some(_) = app_matcher.subcommand_matches("track") {
-        print!("Your tracker has started, type anything to stop the tracker: ");
-        let current = get_current_ms();
+        Some("track") => {
+            print!("Your tracker has started, type anything to stop the tracker: ");
+            let current = get_current_ms();
 
-        // block until typed
-        stdout().flush().expect("Failed to flush stdout.");
-        let mut _ignored = String::new();
-        stdin().read_line(&mut _ignored).expect("Did not enter a proper string.");
-        // end blocking
+            // block until typed
+            stdout().flush().expect("Failed to flush stdout.");
+            let mut _ignored = String::new();
+            stdin().read_line(&mut _ignored).expect("Did not enter a proper string.");
+            // end blocking
 
-        let after = get_current_ms();
+            let after = get_current_ms();
 
-        append(path, format!("{}|{},", current, after).as_bytes());
+            append_to_file(&path, format!("{}|{},", current, after).as_bytes());
 
-        println!("You have successfully tracked {} time.", ms_to_time(after - current));
-    } else if let Some(cmd_matcher) = app_matcher.subcommand_matches("split") {
-        if let Some(_) = cmd_matcher.subcommand_matches("day") {
-            append(path, SPLIT_DAY_CHAR.to_string().as_bytes());
-        } else if let Some(_) = cmd_matcher.subcommand_matches("week") {
-            append(path, SPLIT_WEEK_CHAR.to_string().as_bytes());
+            println!("You have successfully tracked {} time.", ms_to_time(after - current));
         }
-    } else if let Some(_) = app_matcher.subcommand_matches("show") {
-        let mut result = String::new();
-
-        if !path.exists() {
-            println!("You have no time currently logged.");
-            return;
+        Some("split") => {
+            let matches = app_matcher.subcommand_matches("split").unwrap();
+            match matches.subcommand_name() {
+                Some("day") => append_to_file(&path, SPLIT_DAY_CHAR_BYTES),
+                Some("week") => append_to_file(&path, SPLIT_WEEK_CHAR_BYTES),
+                _ => unreachable!()
+            }
         }
-
-        OpenOptions::new()
-            .read(true)
-            .open(path)
-            .expect("Failed to open read file.")
-            .read_to_string(&mut result)
-            .expect("Failed to read string from path.");
-
-        println!("{}", show_time_spent(result));
-    } else if let Some(matcher) = app_matcher.subcommand_matches("export") {
-        let exporting_to = Path::new(matcher.value_of("file").unwrap());
-        if exporting_to.is_dir() {
-            println!("The target file is a directory, cannot write to it.")
-        } else {
+        Some("show") => {
             let mut result = String::new();
 
             if !path.exists() {
@@ -135,25 +95,33 @@ fn main() {
                 return;
             }
 
-            OpenOptions::new()
-                .read(true)
-                .open(path)
-                .expect("Failed to open read file.")
-                .read_to_string(&mut result)
-                .expect("Failed to read string from path.");
+            read_from_file(&path, &mut result);
 
-            OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(exporting_to)
-                .expect("Failed to open output file.")
-                .write_all(result.as_bytes())
-                .expect("Failed to export to output file.");
+            println!("{}", show_time_spent(result));
         }
-    } else {
-        unreachable!();
+        Some("export") => {
+            let exporting_to = Path::new(
+                app_matcher.subcommand_matches("export").unwrap().value_of("file").unwrap()
+            );
+            if exporting_to.is_dir() {
+                println!("The target file is a directory, cannot write to it.")
+            } else {
+                let mut result = String::new();
+
+                if !path.exists() {
+                    println!("You have no time currently logged.");
+                    return;
+                }
+
+                read_from_file(&path, &mut result);
+                write_to_file(&exporting_to.to_path_buf(), show_time_spent(result).as_bytes());
+            }
+        }
+        _ => unreachable!()
     }
 }
+
+// result reading / compilation
 
 fn show_time_spent(string: String) -> String {
     let mut display = String::new();
@@ -163,25 +131,24 @@ fn show_time_spent(string: String) -> String {
     let mut week_pointer: usize = 0;
 
     let mut time_info: Vec<Vec<u128>> = Vec::new();
-
-    time_info.push(Vec::new());
+    let mut current_vec: Vec<u128> = Vec::new();
 
     let mut iterator = string.chars().into_iter();
 
     while let Some(x) = iterator.next() {
         match Some(x) {
-            Some(SPLIT_DAY_CHAR) => {
-                // split the day
-                time_info.get_mut(week_pointer).expect("Failed to unwrap vec.").push(curr);
+            Some(SPLIT_DAY_CHAR) => if curr > 0 {
+                current_vec.push(curr);
                 curr = 0;
-            }
+            },
             Some(SPLIT_WEEK_CHAR) => {
                 // split the week
                 if curr > 0 {
-                    time_info.get_mut(week_pointer).expect("Failed to unwrap vec.").push(curr);
+                    current_vec.push(curr);
                     curr = 0;
                 }
-                time_info.push(Vec::new());
+                time_info.push(current_vec);
+                current_vec = Vec::new();
                 week_pointer += 1;
             }
             _ => {
@@ -218,23 +185,27 @@ fn show_time_spent(string: String) -> String {
     }
 
     if curr > 0 {
-        time_info.get_mut(week_pointer).expect("Failed to unwrap vec.").push(curr);
+        current_vec.push(curr);
+    }
+
+    if current_vec.len() > 0 {
+        time_info.push(current_vec);
     }
 
     if time_info[0].len() == 0 {
-        display = display.add("You have no time currently logged.");
+        display += "You have no time currently logged.";
     } else {
         week_pointer = 0;
 
-        display = display.add(format!("<====> Total time spent: {} <====>\n", ms_to_time(total)).as_str());
+        display += format!("<====> Total time spent: {} <====>\n", ms_to_time(total)).as_str();
         display.push('\n');
 
         for x in time_info {
-            display = display.add(display_week_time(week_pointer, x).as_str());
+            display += display_week_time(week_pointer, x).as_str();
             display.push('\n');
             week_pointer += 1;
         }
-        display = display.add("<==================================>\n");
+        display += "<==================================>";
     };
     display
 }
@@ -242,17 +213,64 @@ fn show_time_spent(string: String) -> String {
 fn display_week_time(week: usize, vec: Vec<u128>) -> String {
     let mut display = String::new();
 
-    display = display.add(format!("\t<===> Week {} Info <===>\n", (week + 1)).as_str());
-    let mut pointer: u8 = 1u8;
-    let mut week_total: u128 = 0u128;
+    display += format!("\t<===> Week {} Info <===>\n", (week + 1)).as_str();
+    let mut pointer: u8 = 1;
+    let mut week_total: u128 = 0;
     for i in vec {
-        display = display.add(format!("\t\tDay {} ==> {}\n", pointer, ms_to_time(i)).as_str());
+        display += format!("\t\tDay {} ==> {}\n", pointer, ms_to_time(i)).as_str();
         pointer += 1;
         week_total += i;
     }
-    display.push('\n');
-    display = display.add(format!("\t\tWeek Total ==> {}\n", ms_to_time(week_total)).as_str());
-    display
+    display + format!("\n\t\tWeek Total ==> {}\n", ms_to_time(week_total)).as_str()
+}
+
+// sub command utilities
+
+fn base_sub_command<'a, 'b, S: Into<&'b str>>(name: S, about: S, version: S) -> App<'a, 'b> {
+    SubCommand::<'a>::with_name(name.into())
+        .about(about)
+        .version(version)
+        .author("Corey Shupe")
+}
+
+// file utilities
+
+fn read_from_file(path: &PathBuf, str: &mut String) {
+    OpenOptions::new()
+        .read(true)
+        .open(path)
+        .expect("Failed to open read file.")
+        .read_to_string(str)
+        .expect("Failed to read string from path.");
+}
+
+fn write_to_file(path: &PathBuf, bytes: &[u8]) {
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .expect("Failed to open writing file.")
+        .write(bytes)
+        .expect("Failed to write bytes to path.");
+}
+
+fn append_to_file(path: &PathBuf, bytes: &[u8]) {
+    OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .expect("Failed to open appending file.")
+        .write(bytes)
+        .expect("Failed to write bytes to path.");
+}
+
+// time utilities
+
+fn get_current_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time is not working properly.")
+        .as_millis()
 }
 
 fn ms_to_time(time: u128) -> String {
@@ -266,50 +284,33 @@ fn ms_to_time(time: u128) -> String {
     let mut flag = false;
 
     if hours > 0 {
-        display = display.add(format!("{} Hour", hours).as_str());
+        display += format!("{} Hour", hours).as_str();
         if hours > 1 {
-            display = display.add("s");
+            display += "s";
         }
         flag = true;
     }
 
     if minutes > 0 {
         if flag {
-            display = display.add(" ");
+            display += " ";
         }
-        display = display.add(format!("{} Minute", minutes).as_str());
+        display += format!("{} Minute", minutes).as_str();
         if minutes > 1 {
-            display = display.add("s");
+            display += "s";
         }
         flag = true;
     }
 
     if seconds > 0 {
         if flag {
-            display = display.add(" ");
+            display += " ";
         }
-        display = display.add(format!("{} Second", seconds).as_str());
+        display += format!("{} Second", seconds).as_str();
         if seconds > 1 {
-            display = display.add("s");
+            display += "s";
         }
     }
 
     display
-}
-
-fn append(path: PathBuf, bytes: &[u8]) {
-    OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .expect("Failed to open appending file.")
-        .write(bytes)
-        .expect("Failed to write bytes to path.");
-}
-
-fn get_current_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time is not working properly.")
-        .as_millis()
 }
