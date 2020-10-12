@@ -54,8 +54,7 @@ fn main() {
 
             // block until typed
             stdout().flush().expect("Failed to flush stdout.");
-            let mut _ignored = String::new();
-            stdin().read_line(&mut _ignored).expect("Did not enter a proper string.");
+            stdin().read_line(&mut String::new()).expect("Did not enter a proper string.");
             // end blocking
 
             let after = get_current_ms();
