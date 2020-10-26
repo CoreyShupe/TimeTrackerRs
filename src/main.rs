@@ -1,12 +1,9 @@
-use druid::{
-    im::{Vector, HashMap},
-    widget::{Button, CrossAxisAlignment, Flex, FlexParams, Label, List, Padding, Scroll, TextBox},
-    AppLauncher, Data, Lens, PlatformError, UnitPoint, Widget, WidgetExt, WindowDesc,
-};
+use druid::{im::{Vector, HashMap}, widget::{Button, CrossAxisAlignment, Flex, FlexParams, Label, List, Padding, Scroll, TextBox}, AppLauncher, Data, Lens, PlatformError, UnitPoint, Widget, WidgetExt, WindowDesc, Size, LocalizedString, Color};
 use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use druid::widget::Either;
 
 #[derive(Clone, Data)]
 struct TrackerEntry {
@@ -106,9 +103,20 @@ impl TrackerEntryData {
 }
 
 fn build_ui() -> impl Widget<TrackerEntryData> {
-    let description_text_box = TextBox::new()
-        .lens(TrackerEntryData::incoming_descriptor)
-        .expand_width();
+    let description_text_box = Either::new(
+        |data: &TrackerEntryData, _env: &_| data.current_entry.is_none(),
+        TextBox::new().lens(TrackerEntryData::incoming_descriptor).expand_width(),
+        Label::new(|data: &Option<TrackerInfo>, _env: &_| {
+            match data {
+                Some(tracker_info) => format!("Tracker Running: `{}`", tracker_info.description),
+                None => format!("Failed to read version.")
+            }
+        }).lens(TrackerEntryData::current_entry),
+    ).expand_width();
+
+    // let description_text_box = TextBox::new()
+    //     .lens(TrackerEntryData::incoming_descriptor)
+    //     .expand_width();
 
     let switch_button = Button::new(|data: &Option<TrackerInfo>, _env: &_| {
         match data {
@@ -119,43 +127,66 @@ fn build_ui() -> impl Widget<TrackerEntryData> {
         data.swap_states();
     });
 
-    let output_text = Label::new(|data: &Option<TrackerInfo>, _env: &_| {
-        match data {
-            Some(tracker_info) => {
-                format!("Tracker Running: `{}`", &tracker_info.description)
-            }
-            None => {
-                String::from("Tracker Not Started")
-            }
-        }
-    }).lens(TrackerEntryData::current_entry);
-
-    let scroll_list = Scroll::new(List::new(|| {
-        Label::new(|item: &TrackerSection, _env: &_| {
-            format!("| {} | {} |", item.description, ms_to_time(*item.time_spent_ms))
-        }).align_vertical(UnitPoint::LEFT).padding(1.0).expand_width()
-    })).vertical().lens(TrackerEntryData::section_storage);
+    let scroll_list = Scroll::new(
+        Flex::row()
+            .with_flex_child(
+                List::new(|| {
+                    Label::new(|item: &TrackerSection, _env: &_| {
+                        format!("{}", item.description)
+                    }).align_vertical(UnitPoint::LEFT).padding(1.0).expand_width()
+                }).border(Color::rgb8(255, 255, 255), 1.0),
+                1.0,
+            )
+            .with_flex_child(
+                List::new(|| {
+                    Label::new(|item: &TrackerSection, _env: &_| {
+                        format!("{}", ms_to_time(*item.time_spent_ms))
+                    }).align_vertical(UnitPoint::LEFT).padding(1.0).expand_width()
+                }).border(Color::rgb8(255, 255, 255), 1.0),
+                1.0,
+            ),
+    ).vertical().lens(TrackerEntryData::section_storage);
 
     Padding::new(3.0, Flex::column()
         .with_flex_child(
             Flex::row()
                 .with_flex_child(description_text_box, 1.0)
                 .with_flex_spacer(0.1)
-                .with_flex_child(switch_button, 1.0)
-                .with_flex_spacer(0.1)
-                .with_flex_child(output_text, 1.0),
+                .with_flex_child(switch_button, 1.0),
+            // .with_flex_child(output_text, 1.0),
             1.0)
         .with_flex_spacer(0.2)
         .with_flex_child(
-            Label::new("| Description | Time Spent |"),
-            FlexParams::new(1.0, CrossAxisAlignment::Start))
-        .with_flex_spacer(0.05)
+            Flex::row()
+                .with_flex_child(
+                    Label::new("Description")
+                        .border(Color::rgb8(255, 255, 255), 1.0).expand_width(),
+                    FlexParams::new(1.0, CrossAxisAlignment::Start),
+                )
+                .with_flex_child(
+                    Label::new("Time Spent")
+                        .border(Color::rgb8(255, 255, 255), 1.0).expand_width(),
+                    FlexParams::new(1.0, CrossAxisAlignment::Start),
+                ),
+            1.0,
+        )
         .with_flex_child(scroll_list, 1.0),
     )
 }
 
 fn main() -> Result<(), PlatformError> {
-    AppLauncher::with_window(WindowDesc::new(build_ui)).launch(TrackerEntryData {
+    let window = WindowDesc::new(build_ui)
+        .window_size(Size {
+            width: 600.0,
+            height: 400.0,
+        })
+        .resizable(false)
+        .title(
+            LocalizedString::new("timetacker.window.title")
+                .with_placeholder("Simple Time Tracker")
+        );
+
+    AppLauncher::with_window(window).launch(TrackerEntryData {
         storage: Vector::new(),
         section_storage: Vector::new(),
         current_entry: Option::None,
