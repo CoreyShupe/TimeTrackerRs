@@ -2,7 +2,12 @@ use prettytable::{Table, Row, Cell, Attr};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
-use prettytable::color::{RED, BLUE};
+
+#[derive(PartialEq, Eq, Hash)]
+struct MapEntry {
+    description: String,
+    short: String,
+}
 
 #[derive(Serialize, Deserialize, PartialEq)]
 pub struct TrackEntry {
@@ -12,11 +17,13 @@ pub struct TrackEntry {
     time_spent_ms: u128,
     #[serde(rename = "Description")]
     description: String,
+    #[serde(rename = "Short")]
+    short: Option<String>,
 }
 
 impl TrackEntry {
-    pub fn new(entry_date: u128, time_spent_ms: u128, description: String) -> Self {
-        Self { entry_date, time_spent_ms, description }
+    pub fn new(entry_date: u128, time_spent_ms: u128, description: String, short: Option<String>) -> Self {
+        Self { entry_date, time_spent_ms, description, short }
     }
 }
 
@@ -29,9 +36,8 @@ impl Tracker {
     pub fn new() -> Self {
         Self { entries: Vec::new() }
     }
-
-    pub fn with_vector(vector: Vec<TrackEntry>) -> Self {
-        Self { entries: vector }
+    pub fn with_entries(entries: Vec<TrackEntry>) -> Self {
+        Self { entries }
     }
 
     pub fn gen_table(&self) -> Table {
@@ -40,6 +46,7 @@ impl Tracker {
         table.add_row(Row::new(
             vec![
                 Cell::new("Description").with_style(Attr::Bold),
+                Cell::new("Specific").with_style(Attr::Bold),
                 Cell::new("Time Spent").with_style(Attr::Bold)
             ]
         ));
@@ -47,23 +54,28 @@ impl Tracker {
         table.add_empty_row();
 
         let mut global_time = 0u128;
-        let mut map = HashMap::<String, u128>::new();
+        let mut map = HashMap::<MapEntry, u128>::new();
 
         for entry in &self.entries {
             global_time += entry.time_spent_ms;
-            let old_value = *map.get(&entry.description).unwrap_or_else(|| { &0u128 });
+            let map_entry = MapEntry {
+                description: String::from(&entry.description),
+                short: entry.short.clone().unwrap_or(String::from("N/A"))
+            };
+            let old_value = *map.get(&map_entry).unwrap_or_else(|| { &0u128 });
             &map.insert(
-                entry.description.clone(),
+                map_entry,
                 old_value + entry.time_spent_ms,
             );
         }
 
         for map_entry in map {
-            let description = &*map_entry.0;
+            let entry = &map_entry.0;
             let time_spent = &*ms_to_time(map_entry.1);
 
             table.add_row(Row::new(vec![
-                Cell::new(description),
+                Cell::new(&entry.description),
+                Cell::new(&entry.short),
                 Cell::new(time_spent)
             ]));
         }
@@ -72,6 +84,7 @@ impl Tracker {
         table.add_row(Row::new(
             vec![
                 Cell::new("Total").with_style(Attr::Bold),
+                Cell::new(""),
                 Cell::new(&*ms_to_time(global_time)).with_style(Attr::Italic(true))
             ]
         ));
@@ -105,7 +118,7 @@ impl Tracker {
                     let record: TrackEntry = result?;
                     track_entries.push(record);
                 }
-                Ok(Self::with_vector(track_entries))
+                Ok(Self::with_entries(track_entries))
             }
             Err(e) => {
                 Err(e)

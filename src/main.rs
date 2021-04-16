@@ -2,6 +2,7 @@ extern crate prettytable;
 extern crate clap;
 
 mod tracker;
+mod transformers;
 
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
@@ -29,6 +30,11 @@ fn main() {
                 .short("d")
                 .required(true)
                 .help("Description of what's being tracked."))
+            .arg(Arg::with_name("short")
+                .index(2)
+                .short("s")
+                .required(false)
+                .help("Short of what's being tracked."))
         )
         .subcommand(base_sub_command("show", "Shows the time tracked.", SHOW_CMD_VERSION).alias("s"))
         .get_matches();
@@ -47,8 +53,10 @@ fn main() {
         Some("track") => {
             print!("Your tracker has started, type anything to stop the tracker: ");
 
-            let description = app_matcher.subcommand_matches("track").unwrap()
-                .value_of("description").unwrap();
+            let sub = app_matcher.subcommand_matches("track").unwrap();
+
+            let description = sub.value_of("description").unwrap();
+            let short = sub.value_of("short");
 
             let current = get_current_ms();
 
@@ -68,6 +76,11 @@ fn main() {
                 get_current_ms(),
                 after - current,
                 String::from(description),
+                if let Some(short_item) = short {
+                    Option::Some(String::from(short_item))
+                } else {
+                    Option::None
+                },
             ));
             tracker.write_to(&path).expect("Failed to write CSV file.");
 
