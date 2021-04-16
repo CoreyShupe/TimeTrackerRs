@@ -2,11 +2,11 @@ extern crate prettytable;
 extern crate clap;
 
 mod tracker;
-mod transformers;
 
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs;
 
 use clap::{App, AppSettings, Arg, SubCommand};
 use crate::tracker::{Tracker, TrackEntry};
@@ -58,11 +58,20 @@ fn main() {
             let description = sub.value_of("description").unwrap();
             let short = sub.value_of("short");
 
-            let current = get_current_ms();
+            let lock = path.parent().unwrap().join("tracker.lock");
+            let current = if *&lock.exists() {
+                fs::read_to_string(&lock).unwrap().parse::<u128>().unwrap()
+            } else {
+                get_current_ms()
+            };
 
+            // write lock
+            fs::write(&lock, current.to_string()).unwrap();
             // block until typed
             stdout().flush().expect("Failed to flush stdout.");
             stdin().read_line(&mut String::new()).expect("Did not enter a proper string.");
+            // delete lock
+            fs::remove_file(&lock).unwrap();
             // end blocking
 
             let after = get_current_ms();
