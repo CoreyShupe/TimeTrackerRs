@@ -63,8 +63,8 @@ impl Tracker {
             let time_spent = &*ms_to_time(map_entry.1);
 
             table.add_row(Row::new(vec![
-                Cell::new(description).with_style(Attr::BackgroundColor(RED)),
-                Cell::new(time_spent).with_style(Attr::BackgroundColor(BLUE))
+                Cell::new(description),
+                Cell::new(time_spent)
             ]));
         }
 
